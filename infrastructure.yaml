@@ -1,9 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: HTW Berlin - Serverless AI Pipeline (Translate + Sentiment Analysis)
+Description: >
+  HTW Berlin - Serverless AI Pipeline.
+  Features: S3 Ingestion, Lambda Processing, Amazon Translate, Amazon Comprehend, and SQL Analytics via AWS Glue/Athena.
 
 Resources:
-  # 1. RAW DATA BUCKET (Input Storage)
-  # This bucket triggers the Lambda function when a new file is uploaded.
+  # ==========================================
+  # 1. STORAGE LAYER (S3 Buckets)
+  # ==========================================
+  
+  # Input Bucket: Stores raw text files uploaded by the user.
+  # Triggers the Lambda function upon file upload.
   RawDataBucket:
     Type: AWS::S3::Bucket
     DependsOn: LambdaInvokePermission
@@ -14,15 +20,18 @@ Resources:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt AIProcessorFunction.Arn
 
-  # 2. PROCESSED DATA BUCKET (Output Storage)
-  # Stores the final JSON analysis results.
+  # Output Bucket: Stores the processed JSON results.
+  # acts as the Data Lake storage for Athena analysis.
   ProcessedDataBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub 'htw-processed-data-${AWS::AccountId}-${AWS::Region}'
 
-  # 3. IAM ROLE (Security & Permissions)
-  # Grants the Lambda function permission to access S3, Comprehend, and Translate services.
+  # ==========================================
+  # 2. SECURITY LAYER (IAM Roles)
+  # ==========================================
+
+  # Role for Lambda: Grants permission to access S3, Translate, and Comprehend services.
   AIProcessorRole:
     Type: AWS::IAM::Role
     Properties:
@@ -34,20 +43,45 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: S3AndAIAdmin
+        - PolicyName: AI-Service-Access
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:*
-                  - comprehend:*
-                  - translate:*
-                  - logs:*
+                  - s3:* # Read/Write files
+                  - comprehend:* # Sentiment Analysis
+                  - translate:* # Language Translation
+                  - logs:* # CloudWatch Logging
                 Resource: '*'
 
-  # 4. LAMBDA FUNCTION (AI Brain + Translator)
-  # This function handles the logic: Read File -> Translate -> Analyze Sentiment -> Save Result.
+  # Role for AWS Glue: Grants permission to crawl S3 buckets and update the Data Catalog.
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: S3AccessForGlue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource: '*'
+
+  # ==========================================
+  # 3. COMPUTE LAYER (Lambda Function)
+  # ==========================================
+
+  # The Core Logic: Handles Translation, Sentiment Analysis, and Data Transformation.
   AIProcessorFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -62,78 +96,73 @@ Resources:
           import boto3
           import os
 
-          # Initialize AWS SDK clients
+          # Initialize AWS SDK Clients
           s3 = boto3.client('s3')
           comprehend = boto3.client('comprehend')
-          translate = boto3.client('translate') 
+          translate = boto3.client('translate')
 
           def lambda_handler(event, context):
-              print("AI Engine Started! Mode: Translation & Sentiment Analysis")
+              print("Pipeline Started: Translation & Sentiment Analysis")
               
-              # 1. Retrieve file information from the event trigger
-              record = event['Records'][0]
-              src_bucket = record['s3']['bucket']['name']
-              src_key = record['s3']['object']['key']
-              print(f"Processing file: {src_bucket}/{src_key}")
-              
-              # 2. Read the file content from the Raw Data Bucket
+              # 1. Parse Event Data (Get Bucket and File Name)
               try:
+                  record = event['Records'][0]
+                  src_bucket = record['s3']['bucket']['name']
+                  src_key = record['s3']['object']['key']
+                  print(f"Processing File: {src_bucket}/{src_key}")
+                  
+                  # 2. Read File Content
                   obj = s3.get_object(Bucket=src_bucket, Key=src_key)
                   original_text = obj['Body'].read().decode('utf-8')
               except Exception as e:
                   print(f"Error reading file: {str(e)}")
-                  return {'status': 'error', 'message': str(e)}
-              
-              # 3. AMAZON TRANSLATE (Detect Language -> Translate to English)
-              print("Step 1: Translating text to English...")
-              try:
-                  translation_response = translate.translate_text(
-                      Text=original_text,
-                      SourceLanguageCode='auto', # Automatically detects source language (e.g., tr, de, fr)
-                      TargetLanguageCode='en'    # Translates to English
-                  )
-                  translated_text = translation_response['TranslatedText']
-                  source_lang = translation_response['SourceLanguageCode']
-                  print(f"Detected Language: {source_lang}")
-              except Exception as e:
-                  print(f"Translation failed: {str(e)}")
-                  return {'status': 'error', 'message': 'Translation failed'}
-              
-              # 4. SENTIMENT ANALYSIS (Analyze the translated English text)
+                  return {'status': 'error'}
+
+              # 3. AMAZON TRANSLATE: Convert text to English
+              print("Step 1: Translating text...")
+              translation_response = translate.translate_text(
+                  Text=original_text,
+                  SourceLanguageCode='auto', # Automatically detect language (e.g., DE, TR)
+                  TargetLanguageCode='en'    # Translate to English
+              )
+              translated_text = translation_response['TranslatedText']
+              source_lang = translation_response['SourceLanguageCode']
+              print(f"Detected Language: {source_lang}")
+
+              # 4. AMAZON COMPREHEND: Analyze Sentiment
               print("Step 2: Analyzing sentiment...")
               sentiment_response = comprehend.detect_sentiment(Text=translated_text, LanguageCode='en')
-              sentiment = sentiment_response['Sentiment']
-              score = sentiment_response['SentimentScore']
-              
-              # 5. Prepare the final report (JSON)
-              # Includes original text, detected language, translation, and sentiment scores.
+              sentiment = sentiment_response['Sentiment']      # POSITIVE, NEGATIVE, etc.
+              score = sentiment_response['SentimentScore']     # Confidence scores
+
+              # 5. Prepare Data for Analytics (Flattened JSON Structure)
+              # This structure is optimized for AWS Athena SQL queries.
               analysis_result = {
                   'original_text': original_text,
                   'detected_language': source_lang,
                   'translated_english': translated_text,
-                  'sentiment_analysis': {
-                      'mood': sentiment,
-                      'scores': score
-                  },
-                  'project': 'HTW Berlin - Serverless AI Pipeline',
-                  'author': 'Yigit Peker'
+                  'sentiment': sentiment,
+                  'confidence_positive': score['Positive'],
+                  'confidence_negative': score['Negative'],
+                  'confidence_neutral': score['Neutral'],
+                  'author': 'Yigit Peker',
+                  'project': 'HTW Berlin Serverless Project'
               }
-              
-              # 6. Save the result to the 'Processed' bucket
+
+              # 6. Save Result to Processed Bucket
               target_bucket = src_bucket.replace('raw-data', 'processed-data')
               target_key = 'AI_RESULT_' + src_key + '.json'
               
               s3.put_object(
                   Bucket=target_bucket,
                   Key=target_key,
-                  Body=json.dumps(analysis_result, indent=4)
+                  Body=json.dumps(analysis_result) # Saving as single-line JSON for Athena
               )
               
-              print(f"Analysis successfully saved to: {target_bucket}/{target_key}")
-              return {'status': 'success', 'lang': source_lang, 'mood': sentiment}
+              print(f"Success: Data saved to {target_bucket}/{target_key}")
+              return {'status': 'success', 'mood': sentiment}
 
-  # 5. S3 PERMISSION
-  # Grants S3 permission to invoke this specific Lambda function.
+  # Permission to allow S3 to trigger the Lambda function
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -141,3 +170,29 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
       SourceArn: !Sub 'arn:aws:s3:::htw-raw-data-${AWS::AccountId}-${AWS::Region}'
+
+  # ==========================================
+  # 4. ANALYTICS LAYER (Glue & Athena)
+  # ==========================================
+
+  # Glue Database: Acts as a logical container for the data tables.
+  AnalyticsDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: htw_customer_insights_db
+
+  # Glue Crawler: Scans S3 JSON files and automatically creates the SQL table schema.
+  DataCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: HTW-Data-Crawler
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref AnalyticsDatabase
+      Targets:
+        S3Targets:
+          - Path: !Ref ProcessedDataBucket
+      SchemaChangePolicy:
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "DEPRECATE_IN_DATABASE"
