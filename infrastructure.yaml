@@ -1,35 +1,80 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: HTW Berlin - Serverless AI-Driven Customer Insight Pipeline - Infrastructure Setup
+Description: HTW Berlin - Serverless AI Pipeline (Full Logic)
 
 Resources:
-  # 1. S3 Bucket for Storing Raw Customer Reviews (Input)
+  # 1. RAW DATA BUCKET (Input)
+  # Waits for Lambda permission to be created first
   RawDataBucket:
     Type: AWS::S3::Bucket
+    DependsOn: LambdaInvokePermission
     Properties:
-      # We append AccountID and Region to ensure the bucket name is globally unique
       BucketName: !Sub 'htw-raw-data-${AWS::AccountId}-${AWS::Region}'
-      # Security Best Practice: Block all public access to prevent data leaks
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt AIProcessorFunction.Arn
 
-  # 2. S3 Bucket for Storing Processed/Translated Data (Output)
+  # 2. PROCESSED DATA BUCKET (Output)
   ProcessedDataBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub 'htw-processed-data-${AWS::AccountId}-${AWS::Region}'
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
 
-Outputs:
-  RawBucketName:
-    Description: The name of the S3 bucket created for raw data
-    Value: !Ref RawDataBucket
-  ProcessedBucketName:
-    Description: The name of the S3 bucket created for processed data
-    Value: !Ref ProcessedDataBucket
+  # 3. IAM ROLE (Security)
+  AIProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3AndAIAdmin
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - comprehend:*
+                  - translate:*
+                  - logs:*
+                Resource: '*'
+
+  # 4. LAMBDA FUNCTION (The AI Brain)
+  AIProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: HTW-Customer-Insight-AI
+      Handler: index.lambda_handler
+      Role: !GetAtt AIProcessorRole.Arn
+      Runtime: python3.9
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+
+          s3 = boto3.client('s3')
+          comprehend = boto3.client('comprehend')
+
+          def lambda_handler(event, context):
+              print("AI Engine Started! HTW Berlin Project")
+              
+              # 1. Get file information from the event
+              record = event['Records'][0]
+              src_bucket = record['s3']['bucket']['name']
+              src_key = record['s3']['object']['key']
+              print(f"Processing file: {src_bucket}/{src_key}")
+              
+              # 2. Read the file content from S3
+              obj = s3.get_object(Bucket=src_bucket, Key=src_key)
+              text = obj['Body'].read().decode('utf-8')
+              
+              # 3. Perform SENTIMENT ANALYSIS with AWS Comprehend
+              sentiment_response = comprehend.detect_sentiment(Text=text, LanguageCode='en')
+              sentiment = sentiment_response['Sentiment']      #
