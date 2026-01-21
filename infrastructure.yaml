@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HTW Berlin - Serverless AI-Driven Customer Insight Pipeline - Infrastructure Setup
+
+Resources:
+  # 1. S3 Bucket for Storing Raw Customer Reviews (Input)
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      # We append AccountID and Region to ensure the bucket name is globally unique
+      BucketName: !Sub 'htw-raw-data-${AWS::AccountId}-${AWS::Region}'
+      # Security Best Practice: Block all public access to prevent data leaks
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # 2. S3 Bucket for Storing Processed/Translated Data (Output)
+  ProcessedDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'htw-processed-data-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  RawBucketName:
+    Description: The name of the S3 bucket created for raw data
+    Value: !Ref RawDataBucket
+  ProcessedBucketName:
+    Description: The name of the S3 bucket created for processed data
+    Value: !Ref ProcessedDataBucket
