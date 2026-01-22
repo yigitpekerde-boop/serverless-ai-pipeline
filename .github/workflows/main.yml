@@ -14,4 +14,3 @@ jobs:
           aws-region: eu-west-1
       - name: Deploy to S3
       run: aws s3 cp index.html s3://htw-project-website-yigit/
-       
