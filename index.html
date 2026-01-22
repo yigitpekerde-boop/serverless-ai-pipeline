@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTW Customer Insight Project</title>
+    <style>
+        /* HTW Berlin Renkleri ve Modern Tasarım */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: white;
+            padding: 50px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 600px;
+        }
+        h1 { color: #2E27AD; margin-bottom: 10px; } /* Mavi */
+        h3 { color: #555; font-weight: 300; margin-top: 0; }
+        .logo { font-size: 60px; margin-bottom: 20px; }
+        p { color: #666; line-height: 1.6; font-size: 18px; }
+        .btn {
+            display: inline-block;
+            background-color: #E7157B; /* Pembe */
+            color: white;
+            padding: 15px 40px;
+            margin-top: 30px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 18px;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(231, 21, 123, 0.4);
+        }
+        .btn:hover { transform: scale(1.05); background-color: #c90f6b; }
+        .footer { margin-top: 40px; font-size: 14px; color: #999; }
+        .tech-stack { margin-top: 20px; color: #2E27AD; font-weight: bold; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="logo">🚀</div>
+        <h1>Global Customer Insights</h1>
+        <h3>Serverless AI Analysis Pipeline</h3>
+        
+        <p>
+            Welcome to the automated feedback analysis system.
+            <br>
+            This project uses <strong>AWS Lambda</strong>, <strong>Translate</strong>, and <strong>Comprehend</strong> to turn raw text into actionable data.
+        </p>
+
+        <a href="https://eu-west-1.quicksight.aws.amazon.com/sn/accounts/774023531476/dashboards/e7996bb1-f39f-46bd-8985-3f82a2bfaa30?directory_alias" class="btn" target="_blank">View Live Dashboard</a>
+
+        <div class="tech-stack">
+            S3 • Lambda • Athena • QuickSight • GitLab CI/CD
+        </div>
+
+        <div class="footer">
+            Developed by Yiğit Peker for HTW Berlin - Semester Project
+        </div>
+    </div>
+
+</body>
+</html>
